@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-from logic import grammar, text_to_midi2
+from logic import grammar, text_to_midi2, text_to_array
 
 
 def create_visual_grid(frame):
@@ -49,6 +49,109 @@ def log_message(message, is_error=False):
         console_box.tag_config("error", foreground="red")
     console_box.config(state="disabled")  # Disable editing to prevent user input
 
+def draw_visual_preview(data):
+    """
+    Render the array of arrays as a visual preview with 0s and 1s.
+    Includes zoom functionality with mouse scroll.
+    """
+    preview_window = tk.Toplevel()
+    preview_window.title("Visual Preview")
+
+    # Set initial window size
+    preview_window.geometry("800x800")
+
+    # Initial zoom factor
+    zoom_factor = tk.DoubleVar(value=1.0)
+
+    # Frame for the canvas and scrollbars
+    canvas_frame = tk.Frame(preview_window)
+    canvas_frame.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(canvas_frame, bg="white")
+    h_scrollbar = tk.Scrollbar(canvas_frame, orient="horizontal", command=canvas.xview)
+    v_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+    canvas.configure(xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set)
+
+    # Pack canvas and scrollbars
+    canvas.grid(row=0, column=0, sticky="nsew")
+    v_scrollbar.grid(row=0, column=1, sticky="ns")
+    h_scrollbar.grid(row=1, column=0, sticky="ew")
+
+    canvas_frame.grid_rowconfigure(0, weight=1)
+    canvas_frame.grid_columnconfigure(0, weight=1)
+
+    def redraw_canvas():
+        """
+        Redraw the canvas based on the current zoom factor.
+        """
+        canvas.delete("all")  # Clear previous drawing
+
+        box_size = int(20 * zoom_factor.get())  # Scale box size
+        x_start, y_start = 10, 10
+        y_offset = 0
+
+        for section in data:
+            x_offset = 0
+            # Rotate the visual representation (values flipped)
+            for value in section:
+                if value == 1:
+                    # Draw a filled black box for '1'
+                    canvas.create_rectangle(
+                        y_start + y_offset,
+                        x_start + x_offset,
+                        y_start + y_offset + box_size,
+                        x_start + x_offset + box_size,
+                        fill="black", outline="black", width=2
+                    )
+                elif value == 0:
+                    # Draw a hollow box for '0'
+                    canvas.create_rectangle(
+                        y_start + y_offset,
+                        x_start + x_offset,
+                        y_start + y_offset + box_size,
+                        x_start + x_offset + box_size,
+                        outline="black", width=2
+                    )
+                x_offset += box_size  # Adjust spacing between boxes
+            y_offset += box_size  # Adjust spacing for newlines
+
+        # Update the scroll region to fit the new content
+        canvas.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+    # Initial draw
+    redraw_canvas()
+
+    # Function to handle zooming with mouse scroll
+    def on_zoom(event):
+        """
+        Zoom in or out when the mouse wheel is scrolled.
+        """
+        if event.delta > 0:
+            # Scroll up -> zoom in
+            zoom_factor.set(min(zoom_factor.get() + 0.1, 3.0))  # Max zoom of 3x
+        elif event.delta < 0:
+            # Scroll down -> zoom out
+            zoom_factor.set(max(zoom_factor.get() - 0.1, 0.5))  # Min zoom of 0.5x
+        redraw_canvas()
+
+    # Bind Ctrl + Mouse Scroll to zoom
+    canvas.bind("<Control-MouseWheel>", on_zoom)
+
+
+
+def preview_midi_conversion():
+    input_text = input_field.get()
+
+    if not input_text:
+        log_message("Error: Input field cannot be empty.", is_error=True)
+        return
+
+    try:
+        visual_data = text_to_array(input_text, logger=log_message)
+        draw_visual_preview(visual_data)
+    except Exception as e:
+        log_message(str(e), is_error=True)
 
 def run_midi_conversion():
     input_text = input_field.get()
@@ -106,9 +209,17 @@ tk.Label(input_frame, text="Enter file name:").grid(row=1, column=0, padx=5, sti
 file_name_field = tk.Entry(input_frame, width=50)
 file_name_field.grid(row=1, column=1, padx=5)
 
+# Frame for buttons
+button_frame = tk.Frame(input_frame)
+button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+
+# Preview button
+preview_button = tk.Button(button_frame, text="Preview", command=preview_midi_conversion)
+preview_button.pack(side="left", padx=5)
+
 # Submit button
-submit_button = tk.Button(input_frame, text="Convert to MIDI", command=run_midi_conversion)
-submit_button.grid(row=2, column=0, columnspan=2, pady=10)
+submit_button = tk.Button(button_frame, text="Convert to MIDI", command=run_midi_conversion)
+submit_button.pack(side="left", padx=5)
 
 # Run the Tkinter loop
 root.mainloop()
