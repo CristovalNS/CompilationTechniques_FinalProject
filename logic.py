@@ -3,15 +3,18 @@ import json
 from mido import MidiFile, MidiTrack, Message
 
 grammar = {
-    'Start': [['Sequence']],
-    'Sequence': [['Pattern', 'SequenceRest']],
-    'SequenceRest': [
-        ['NewColumn', 'Pattern', 'SequenceRest'],  # Pattern followed by NewColumn and more SequenceRest
-        ['Pattern', 'SequenceRest'],               # Pattern followed by more SequenceRest
-        []                                         # Empty production to allow termination
+    'Start': [['Pattern', 'Sequence']],
+    'Sequence': [
+        ['NewColumn', 'Pattern', 'Sequence'],   # Pattern generator after NewColumn so at least 1 pattern per row can be enforced
+        ['Pattern', 'Sequence'],
+        []                                                          # Empty Production for termination
     ],
     'Pattern': [
-        ['SingleNote'], ['DoubleNote'], ['TripleNote'], ['QuadNote'], ['QuintNote']
+        ['SingleNote'],
+        ['DoubleNote'],
+        ['TripleNote'],
+        ['QuadNote'],
+        ['QuintNote']
     ],
 
     'SingleNote': {
@@ -61,14 +64,35 @@ grammar = {
     },
 }
 
+
+def get_keys(dictionary):
+    return [k for k in dictionary.keys()]
+
+
+token_list = []
+token_max_length = 2
+for item in grammar.values():
+    if isinstance(item, dict):
+        token_list += get_keys(item)
+
+
 def tokenize(text):
-    if len(text) % 2 != 0:
-        raise ValueError("Error: Input must have an even number of characters.")
-    tokens = [text[i:i + 2] for i in range(0, len(text), 2)]
-    # Validation: Input cannot start with '9p'
-    if tokens and tokens[0] == '9p':
-        raise ValueError("Error: Input cannot start with 'NewColumn' (9p).")
+    global token_list, token_max_length
+    tokens = []
+    start = 0
+    end = 1
+    while end <= len(text):
+        token = text[start:end]
+        if len(token) > token_max_length:
+            raise ValueError("Failed to tokenize")
+        if token in token_list:
+            tokens.append(token)
+            start = end
+        end += 1
+    if end - start > 1:
+        raise ValueError("Failed to tokenize")
     return tokens
+
 
 def parse_rule(rule_name, tokens, index):
     print(f"Parsing rule: {rule_name}, Tokens: {tokens[index:]}, Index: {index}")
@@ -119,12 +143,14 @@ def parse_rule(rule_name, tokens, index):
     else:
         raise ValueError(f"Invalid rule definition for '{rule_name}'.")
 
+
 def parse_Start(tokens):
     result = parse_rule('Start', tokens, 0)
     if result is not None and result['index'] == len(tokens):
         return result
     else:
         raise ValueError("Error: Unable to parse the input text according to the grammar.")
+
 
 def process_parse_tree(parse_tree, track, logger=None):
     patterns = []
@@ -191,6 +217,7 @@ def process_parse_tree(parse_tree, track, logger=None):
             if empty_switch:
                 total_skips += 1
 
+
 def text_to_midi2(text, output_file="result_FIX.mid", logger=None):
     try:
         tokens = tokenize(text)
@@ -222,6 +249,47 @@ def text_to_midi2(text, output_file="result_FIX.mid", logger=None):
             logger(f"An unexpected error occurred: {e}", is_error=True)
         else:
             print(f"\033[91mAn unexpected error occurred: {e}\033[0m")  # Print unexpected errors in red text
+
+
+def text_to_array(text, logger=None):
+    try:
+        tokens = tokenize(text)
+        parse_tree = parse_Start(tokens)
+
+        all_sections = []
+        current_section = [[] for _ in range(5)]
+
+        # recursive function to convert parse tree to result
+        def extract_patterns(node, patterns=None):
+            if patterns is None:
+                patterns = []
+
+            if node['type'] in ['SingleNote', 'DoubleNote', 'TripleNote', 'QuadNote', 'QuintNote']:
+                patterns.append(node['value'])
+            elif node['type'] == 'NewColumn':
+                patterns.append('newline')
+            elif 'elements' in node:
+                for child in node['elements']:
+                    extract_patterns(child, patterns)
+            return patterns
+
+        result = extract_patterns(parse_tree)
+
+        for item in result:
+            if item == 'newline':
+                all_sections += current_section
+                current_section = [[] for _ in range(5)]
+            else:
+                for i in range(5):
+                    current_section[i].append(item[i])
+        if current_section:
+            all_sections += current_section
+        return all_sections
+    except ValueError as ve:
+        raise ve
+    except Exception as e:
+        raise f"An unexpected error occurred: {e}"
+
 
 # # Example usage:
 # # Test Case 1: Single Token
