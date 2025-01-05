@@ -6,4 +6,4 @@ Group Members:
 2. Kenneth Jayadi Yu - 2602158260
 3. Brandon Salim - 2602177783
 
-To run the program, simply run the 'main.py' file. Make sure all the requirements are installed.
+To run the program, simply run the 'main.py' file. Make sure all the requirements are installed from the requirements.txt file.
